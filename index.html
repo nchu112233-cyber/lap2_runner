@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Giám Sát Runner - Pro Version</title>
+    <!-- Thư viện MQTT JS và Chart.js -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Thư viện biểu tượng Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-body: #101214;
+            --bg-sidebar: #191c20;
+            --bg-card: #1f2226;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a6b0;
+            --border-color: #2e333a;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+        }
+
+        [data-theme="light"] {
+            --bg-body: #f0f2f5;
+            --bg-sidebar: #ffffff;
+            --bg-card: #ffffff;
+            --text-primary: #1a252f;
+            --text-secondary: #65676b;
+            --border-color: #e0e0e0;
+            --accent-blue: #007bff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: var(--bg-body); color: var(--text-primary); display: flex; height: 100vh; overflow: hidden; transition: 0.3s; }
+
+        /* --- SIDEBAR TRÁI --- */
+        .sidebar { width: 280px; background-color: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 20px; overflow-y: auto; }
+        .logo-section { display: flex; align-items: center; gap: 12px; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+        .logo-section i { color: var(--accent-blue); font-size: 24px; }
+        .logo-section h2 { font-size: 16px; font-weight: bold; }
+        .logo-section p { font-size: 12px; color: var(--text-secondary); }
+
+        .nav-links { display: flex; flex-direction: column; gap: 6px; flex-grow: 1; }
+        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 15px; border-radius: 8px; color: var(--text-secondary); text-decoration: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: 0.2s; border: none; background: transparent; width: 100%; text-align: left; }
+        .nav-item:hover { background-color: rgba(128,128,128,0.1); color: var(--text-primary); }
+        .nav-item.active { background-color: var(--accent-blue); color: #fff; }
+        .nav-item i { font-size: 16px; width: 20px; text-align: center; }
+
+        .section-title { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin: 20px 0 10px 5px; font-weight: bold; }
+
+        /* Bảng điều khiển thiết bị trong Sidebar */
+        .device-card { background-color: var(--bg-body); border-radius: 8px; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); }
+        .device-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 13px; }
+        .device-controls { display: flex; gap: 8px; }
+        .btn-ctrl { flex: 1; padding: 6px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; color: white; display: flex; align-items: center; justify-content: center; gap: 4px; }
+        .btn-on { background-color: var(--accent-green); }
+        .btn-off { background-color: var(--accent-red); }
+
+        /* --- VÙNG NỘI DUNG CHÍNH --- */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; padding: 25px; gap: 20px; }
+        
+        .main-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+        .main-header h1 { font-size: 20px; font-weight: bold; }
+        
+        .header-right { display: flex; align-items: center; gap: 15px; }
+        .status-badge { background: var(--bg-card); padding: 8px 15px; border-radius: 20px; font-size: 13px; font-weight: bold; border: 1px solid var(--border-color); }
+        .theme-btn { background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .theme-btn:hover { background: rgba(128,128,128,0.1); }
+
+        .tab-content { display: none; flex-direction: column; gap: 20px; }
+        .tab-content.active { display: flex; }
+
+        /* Thẻ thông số (Cards) */
+        .cards-row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .card { flex: 1; background-color: var(--bg-card); border-radius: 12px; border: 1px solid var(--border-color); padding: 20px; display: flex; align-items: center; gap: 15px; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .card-icon { width: 50px; height: 50px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .icon-temp { background: rgba(239, 68, 68, 0.1); color: var(--accent-red); }
+        .icon-press { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
+        .icon-alt { background: rgba(34, 197, 94, 0.1); color: var(--accent-green); }
+        
+        .card-info span { display: block; }
+        .card-info .label { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+        .card-info .value { font-size: 24px; font-weight: bold; }
+
+        /* Biểu đồ & Lịch sử */
+        .charts-row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .chart-container, .history-container { flex: 1; background-color: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); min-width: 350px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        
+        /* Bảng lịch sử */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid var(--border-color); padding: 12px; text-align: center; font-size: 13px; }
+        th { background: var(--accent-blue); color: white; }
+
+        /* Scrollbar tùy chỉnh */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-body); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    </style>
+</head>
+<body data-theme="dark">
+
+    <!-- SIDEBAR TRÁI -->
+    <div class="sidebar">
+        <div class="logo-section">
+            <i class="fas fa-running"></i>
+            <div>
+                <h2>Runner Monitor</h2>
+                <p>Hệ thống IoT ESP32</p>
+            </div>
+        </div>
+
+        <div class="nav-links">
+            <button class="nav-item active" onclick="switchTab('dashboard', this)">
+                <i class="fas fa-th-large"></i> Giám sát hệ thống
+            </button>
+            <button class="nav-item" onclick="switchTab('history', this)">
+                <i class="fas fa-history"></i> Lịch sử đo & Dữ liệu
+            </button>
+
+            <div class="section-title">Bảng điều khiển (Manual)</div>
+
+            <!-- Điều khiển LED -->
+            <div class="device-card">
+                <div class="device-header">
+                    <span><i class="fas fa-lightbulb"></i> Đèn LED</span>
+                    <span id="led-status" style="color: var(--accent-red); font-weight: bold;">TẮT</span>
+                </div>
+                <div class="device-controls">
+                    <button class="btn-ctrl btn-on" onclick="controlDevice('led', 'ON')">Bật</button>
+                    <button class="btn-ctrl btn-off" onclick="controlDevice('led', 'OFF')">Tắt</button>
+                </div>
+            </div>
+
+            <!-- Điều khiển Loa -->
+            <div class="device-card">
+                <div class="device-header">
+                    <span><i class="fas fa-volume-up"></i> Loa Cảnh Báo</span>
+                    <span id="buzzer-status" style="color: var(--accent-red); font-weight: bold;">TẮT</span>
+                </div>
+                <div class="device-controls">
+                    <button class="btn-ctrl btn-on" onclick="controlDevice('buzzer', 'ON')">Bật</button>
+                    <button class="btn-ctrl btn-off" onclick="controlDevice('buzzer', 'OFF')">Tắt</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NỘI DUNG CHÍNH -->
+    <div class="main-content">
+        <div class="main-header">
+            <h1>HỆ THỐNG GIÁM SÁT & CẢNH BÁO RUNNER</h1>
+            <div class="header-right">
+                <div class="status-badge">
+                    MQTT: <span id="status" style="color: #ef4444;">Đang kết nối...</span>
+                </div>
+                <button class="theme-btn" onclick="toggleTheme()">
+                    <i class="fas fa-adjust"></i> Giao diện Sáng/Tối
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB 1: DASHBOARD -->
+        <div id="dashboard" class="tab-content active">
+            <div class="cards-row">
+                <div class="card">
+                    <div class="card-icon icon-temp"><i class="fas fa-thermometer-half"></i></div>
+                    <div class="card-info">
+                        <span class="label">Nhiệt độ</span>
+                        <span class="value"><span class="temp-val">--</span> °C</span>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon icon-press"><i class="fas fa-tachometer-alt"></i></div>
+                    <div class="card-info">
+                        <span class="label">Áp suất khí quyển</span>
+                        <span class="value"><span class="press-val">--</span> hPa</span>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-icon icon-alt"><i class="fas fa-mountain"></i></div>
+                    <div class="card-info">
+                        <span class="label">Độ cao (Altitude)</span>
+                        <span class="value"><span class="alt-val">--</span> m</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-row">
+                <div class="chart-container">
+                    <canvas id="tempChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <canvas id="altChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: LỊCH SỬ -->
+        <div id="history" class="tab-content">
+            <div class="history-container">
+                <h3>Lịch sử các bản ghi cảm biến thời gian thực</h3>
+                <table id="historyTable">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Nhiệt độ (°C)</th>
+                            <th>Áp suất (hPa)</th>
+                            <th>Độ cao (m)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dữ liệu chèn tự động -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+
+        // Chuyển tab
+        function switchTab(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btn.classList.add('active');
+        }
+
+        // Chuyển chế độ sáng/tối
+        function toggleTheme() {
+            const body = document.body;
+            if (body.getAttribute('data-theme') === 'dark') {
+                body.setAttribute('data-theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+            }
+        }
+
+        // MQTT Kết nối
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const wsPort = window.location.protocol === 'https:' ? '8081' : '8080';
+        const brokerUrl = `${wsProtocol}test.mosquitto.org:${wsPort}/mqtt`;
+
+        const client = mqtt.connect(brokerUrl, {
+            clientId: 'Web_Runner_' + Math.random().toString(16).substr(2, 8)
+        });
+
+        client.on('connect', () => {
+            statusEl.innerText = "ĐÃ KẾT NỐI";
+            statusEl.style.color = "#22c55e";
+            client.subscribe('esp32/runner/#');
+        });
+
+        let currentData = { temp: '--', press: '--', alt: '--' };
+
+        client.on('message', (topic, payload) => {
+            let msg = payload.toString();
+            let timeString = new Date().toLocaleTimeString();
+
+            if (topic === 'esp32/runner/temperature') {
+                document.querySelector('.temp-val').innerText = msg;
+                currentData.temp = msg;
+                updateChart(tempChart, timeString, parseFloat(msg));
+            } else if (topic === 'esp32/runner/pressure') {
+                document.querySelector('.press-val').innerText = msg;
+                currentData.press = msg;
+            } else if (topic === 'esp32/runner/altitude') {
+                document.querySelector('.alt-val').innerText = msg;
+                currentData.alt = msg;
+                updateChart(altChart, timeString, parseFloat(msg));
+                appendHistory(timeString, currentData.temp, currentData.press, currentData.alt);
+            }
+        });
+
+        function appendHistory(time, temp, press, alt) {
+            const tbody = document.querySelector('#historyTable tbody');
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${time}</td><td>${temp}</td><td>${press}</td><td>${alt}</td>`;
+            tbody.prepend(row);
+            if (tbody.rows.length > 30) {
+                tbody.deleteRow(tbody.rows.length - 1);
+            }
+        }
+
+        function controlDevice(device, state) {
+            let topic = device === 'led' ? 'esp32/runner/led_control' : 'esp32/runner/buzzer_control';
+            client.publish(topic, state);
+
+            // Cập nhật trạng thái hiển thị trên giao diện sidebar
+            if(device === 'led') {
+                const s = document.getElementById('led-status');
+                s.innerText = state;
+                s.style.color = state === 'ON' ? '#22c55e' : '#ef4444';
+            } else {
+                const s = document.getElementById('buzzer-status');
+                s.innerText = state;
+                s.style.color = state === 'ON' ? '#22c55e' : '#ef4444';
+            }
+        }
+
+        // Cấu hình biểu đồ Chart.js
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { grid: { color: 'rgba(128,128,128,0.1)' } },
+                x: { grid: { display: false } }
+            }
+        };
+
+        const ctxTemp = document.getElementById('tempChart').getContext('2d');
+        const tempChart = new Chart(ctxTemp, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Nhiệt độ (°C)', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.3 }] },
+            options: chartOptions
+        });
+
+        const ctxAlt = document.getElementById('altChart').getContext('2d');
+        const altChart = new Chart(ctxAlt, {
+            type: 'line',
+            data: { labels: [], datasets: [{ label: 'Độ cao (m)', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.1)', fill: true, tension: 0.3 }] },
+            options: chartOptions
+        });
+
+        function updateChart(chart, label, data) {
+            if (chart.data.labels.length > 15) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+            chart.data.labels.push(label);
+            chart.data.datasets[0].data.push(data);
+            chart.update();
+        }
+    </script>
+</body>
+</html>
